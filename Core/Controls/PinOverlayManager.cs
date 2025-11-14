@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Point = System.Windows.Point;
 using Size = System.Windows.Size;
 
@@ -19,6 +20,9 @@ namespace VirtualCorkboard.Controls
  public double PinVerticalOffset { get; set; } =15;
  public double PinExclusionPadding { get; set; } =4;
  private bool _resolvingOverlap;
+
+ // Raised when a pin is middle-clicked (request to start twine drag)
+ public event Action<PinControl>? PinMiddleDragRequested;
 
  public PinOverlayManager(Canvas pinsCanvas, Canvas notesCanvas)
  {
@@ -39,6 +43,7 @@ namespace VirtualCorkboard.Controls
  note.SizeChanged += NoteOnLoadedOrChanged;
  note.VisualBoundsChanged += NoteOnLoadedOrChanged;
  note.Unloaded += NoteOnUnloaded;
+ pin.PinMiddleMouseDown += Pin_PinMiddleMouseDown;
  EnforcePinExclusionFor(note);
  UpdatePinPosition(note, pin);
  return pin;
@@ -51,9 +56,19 @@ namespace VirtualCorkboard.Controls
  note.SizeChanged -= NoteOnLoadedOrChanged;
  note.VisualBoundsChanged -= NoteOnLoadedOrChanged;
  note.Unloaded -= NoteOnUnloaded;
+ pin.PinMiddleMouseDown -= Pin_PinMiddleMouseDown;
  _pinsCanvas.Children.Remove(pin);
  _noteToPin.Remove(note);
  note.DetachOverlayPin();
+ }
+
+ private void Pin_PinMiddleMouseDown(object sender, MouseButtonEventArgs e)
+ {
+ if (sender is PinControl pin)
+ {
+ PinMiddleDragRequested?.Invoke(pin);
+ e.Handled = true;
+ }
  }
 
  public PinControl? GetPin(BaseNoteControl note) { _noteToPin.TryGetValue(note, out var pin); return pin; }
@@ -142,6 +157,11 @@ namespace VirtualCorkboard.Controls
  return best ?? (0,0);
  }
  private static Rect TranslateRect(Rect rect, double dx, double dy) => new Rect(new Point(rect.X + dx, rect.Y + dy), rect.Size);
- private static double IntersectionArea(Rect a, Rect b) { var i = Rect.Intersect(a, b); if (i.IsEmpty || i.Width <=0 || i.Height <=0) return 0; return i.Width * i.Height; }
+ private static double IntersectionArea(Rect a, Rect b)
+ {
+ var i = Rect.Intersect(a, b);
+ if (i.IsEmpty || i.Width <=0 || i.Height <=0) return 0;
+ return i.Width * i.Height;
+ }
  }
 }

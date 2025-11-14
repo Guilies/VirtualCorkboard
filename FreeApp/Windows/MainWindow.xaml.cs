@@ -32,6 +32,7 @@ namespace VirtualCorkboard
  this.PreviewKeyDown += MainWindow_PreviewKeyDown;
  _twineManager = new TwineManager(TwineCanvas);
  _pinOverlayManager = new PinOverlayManager(PinsCanvas, NotesCanvas);
+ _pinOverlayManager.PinMiddleDragRequested += pin => StartTwineDragFromPin(pin);
  _twineManager.TwineSelectionChanged += TwineManager_TwineSelectionChanged;
  TwineCanvas.MouseLeftButtonDown += TwineCanvas_MouseLeftButtonDown;
  TwineCanvas.Focusable = true;
@@ -86,7 +87,6 @@ namespace VirtualCorkboard
 
  // Select and bring focus to the newly created note
  note.IsSelected = false;
- 
  }
 
  private void MainWindow_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
