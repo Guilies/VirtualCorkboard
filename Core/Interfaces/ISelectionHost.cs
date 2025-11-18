@@ -1,7 +1,7 @@
 namespace VirtualCorkboard
 {
- public interface ISelectionHost
- {
- void NoteSelected();
- }
+    public interface ISelectionHost
+    {
+        void NoteSelected();
+    }
 }
