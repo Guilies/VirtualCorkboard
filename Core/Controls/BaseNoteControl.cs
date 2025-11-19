@@ -21,6 +21,21 @@ namespace VirtualCorkboard.Controls
             );
         }
 
+        // Unique identity for persistence
+        public Guid NoteId
+        {
+            get => (Guid)GetValue(NoteIdProperty);
+            set => SetValue(NoteIdProperty, value);
+        }
+
+        public static readonly DependencyProperty NoteIdProperty =
+            DependencyProperty.Register(
+                nameof(NoteId),
+                typeof(Guid),
+                typeof(BaseNoteControl),
+                new PropertyMetadata(Guid.Empty)
+            );
+
         // global z-order counter so "bring to front" always wins
         private static int _zOrderCounter = 0;
         private static int NextZ() => ++_zOrderCounter;
@@ -94,6 +109,12 @@ namespace VirtualCorkboard.Controls
 
         public BaseNoteControl()
         {
+            // Ensure a persistent identity
+            if (NoteId == Guid.Empty)
+            {
+                NoteId = Guid.NewGuid();
+            }
+
             // Make the note able to receive keyboard focus
             Focusable = true;
 
