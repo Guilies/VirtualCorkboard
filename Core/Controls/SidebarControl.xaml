@@ -4,8 +4,14 @@
  Height="Auto" Width="220" Background="Blue">
  <StackPanel Margin="10">
  <TextBlock Text="Sidebar" FontWeight="Bold" FontSize="18" Margin="0,0,0,10"/>
+ <Button Content="New Workspace" Margin="0,0,0,5" Click="New_Click"/>
+ <Button Content="Open Workspace" Margin="0,0,0,5" Click="Open_Click"/>
+ <Button Content="Save" Margin="0,0,0,5" Click="Save_Click"/>
+ <Button Content="Save As" Margin="0,0,0,5" Click="SaveAs_Click"/>
+ <Separator Margin="0,5,0,5"/>
  <Button Content="Add Text Note" Margin="0,0,0,5" Click="AddTextNote_Click"/>
+ <Separator Margin="0,5,0,5"/>
  <Button Content="Quit" Margin="0,0,0,5" Click="Quit_Click"/>
- <Button Content="Close" Click="Close_Click"/>
+ <Button Content="Close Sidebar" Click="Close_Click"/>
  </StackPanel>
 </UserControl>

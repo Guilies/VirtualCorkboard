@@ -39,6 +39,9 @@ namespace VirtualCorkboard.Twine
              };
          }
 
+         // New: enumerate all active connections for persistence
+         public IEnumerable<TwineConnection> EnumerateConnections() => _twineLines.Keys.ToList();
+
          public void StartTwineConnection(PinControl sourcePin, Point _)
          {
              _dragSourcePin = sourcePin;
@@ -338,6 +341,14 @@ namespace VirtualCorkboard.Twine
 
              _selectionOverlays.Clear();
              _selectedConnections.Clear();
+         }
+
+         public void RefreshAllConnections()
+         {
+             foreach (var conn in _twineLines.Keys.ToList())
+             {
+                  UpdateConnectionPosition(conn);
+             }
          }
 
          private Point GetPinPositionOnTwineCanvas(PinControl pin)
