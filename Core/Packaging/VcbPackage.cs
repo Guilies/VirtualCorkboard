@@ -26,17 +26,34 @@ namespace VirtualCorkboard.Packaging
             // Reserve media folder (empty for MVP)
             zip.CreateEntry(Persistence.PersistenceConstants.MediaFolderName + "/");
         }
+
         public WorkspaceModel Load(string path, IWorkspaceSerializer serializer)
         {
             if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Invalid path", nameof(path));
             if (!File.Exists(path)) throw new FileNotFoundException("Package not found", path);
 
             using var zip = ZipFile.OpenRead(path);
-            var manifestEntry = zip.GetEntry(Persistence.PersistenceConstants.ManifestFileName) ?? throw new InvalidDataException("manifest.json missing");
+            var manifestEntry = zip.GetEntry(Persistence.PersistenceConstants.ManifestFileName) ?? throw new InvalidDataException("Workspace file is corrupted: manifest.json missing");
             using var reader = new StreamReader(manifestEntry.Open());
             var json = reader.ReadToEnd();
 
-            return serializer.Deserialize(json);
+            var model = serializer.Deserialize(json);
+
+            // Validate version
+            if (string.IsNullOrWhiteSpace(model.Version))
+                throw new InvalidDataException("Workspace file is missing version information");
+
+            if (!IsVersionCompatible(model.Version))
+                throw new InvalidDataException($"Incompatible workspace version.\nFile version: {model.Version}\nSupported version: {Persistence.PersistenceConstants.SaveVersion}");
+
+            return model;
+        }
+
+        private static bool IsVersionCompatible(string fileVersion)
+        {
+            // For MVP: exact version match required
+            // Future: implement semantic versioning with migration support
+            return fileVersion == Persistence.PersistenceConstants.SaveVersion;
         }
     }
 }

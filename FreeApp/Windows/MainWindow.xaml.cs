@@ -9,6 +9,10 @@ using VirtualCorkboard.Persistence.Models;
 using VirtualCorkboard.Free.Serialization;
 using Microsoft.Win32;
 using VirtualCorkboard.Packaging;
+using System.Windows.Threading;
+using System.IO;
+using System.Diagnostics;
+using System.Linq;
 
 namespace VirtualCorkboard
 {
@@ -28,6 +32,9 @@ namespace VirtualCorkboard
          private readonly IVcbPackage _package = new VcbPackage();
          private string? _currentFilePath;
          private bool _isDirty;
+         private readonly DispatcherTimer _autosaveTimer = new();
+         private bool _suppressDirtyForNewWorkspace;
+         private bool _isRecoveredWorkspace; // tracks if current workspace was loaded from recovery
 
          // Expose key elements/managers for shells
          public Canvas NotesCanvasElement => NotesCanvas;
@@ -62,10 +69,111 @@ namespace VirtualCorkboard
              _snapshotProvider = new WorkspaceSnapshotProvider(NotesCanvas, _twineManager);
              _uiBuilder = new WorkspaceUiBuilder(NotesCanvas, _twineManager, _pinOverlayManager);
              this.Closing += MainWindow_Closing;
+
+             // Add new code in constructor after InitializeComponent():
+             StoragePaths.EnsureFolders();
+             InitializeAutosave();
+             TryOfferRecoveryAutosave();
+
+             BaseNoteControl.NoteDeleted += _ => { MarkDirty(); };
+             // Subscribe to existing notes if any appear later via builder
+             TextNoteControl.TextEdited += _ => { if (_suppressDirtyForNewWorkspace) _suppressDirtyForNewWorkspace = false; MarkDirty(); };
+             BaseNoteControl.NoteGeometryChanged += n => { if (_suppressDirtyForNewWorkspace) _suppressDirtyForNewWorkspace = false; MarkDirty(); };
          }
 
-         private void MarkDirty() { _isDirty = true; UpdateTitle(); }
-         private void ClearDirty() { _isDirty = false; UpdateTitle(); }
+         private void InitializeAutosave()
+         {
+             _autosaveTimer.Interval = TimeSpan.FromSeconds(30);
+             _autosaveTimer.Tick += (_, __) => PerformAutosaveIfDirty();
+             _autosaveTimer.Start();
+         }
+
+         private string GetRecoveryFileForCurrentWorkspace()
+         {
+             var dir = StoragePaths.GetWorkspaceRecoveryDirectory(_currentFilePath);
+             try { Directory.CreateDirectory(dir); } catch { }
+             return StoragePaths.GetWorkspaceRecoveryFile(_currentFilePath);
+         }
+
+         private void PerformAutosaveIfDirty()
+         {
+            Debug.WriteLine($"Autosave tick. Dirty={_isDirty}. Path={GetRecoveryFileForCurrentWorkspace()}");
+
+            if (!_isDirty || _snapshotProvider == null) return;
+             try
+             {
+                 var model = new WorkspaceModel
+                 {
+                     Notes = _snapshotProvider.CaptureNotes().ToList(),
+                     Connections = _snapshotProvider.CaptureConnections().ToList(),
+                     Settings = _snapshotProvider.CaptureSettings()
+                 };
+                 var path = GetRecoveryFileForCurrentWorkspace();
+                 _package.Save(path, model, _serializer);
+                 // Leave dirty flag set so subsequent autosaves still run until manual save
+             }
+             catch (Exception ex)
+             {
+                 Debug.WriteLine($"[Autosave] Failed: {ex.Message}");
+             }
+         }
+
+         private void TryOfferRecoveryAutosave()
+         {
+             try
+             {
+                 var lastPath = StoragePaths.ReadLastWorkspacePath();
+                 var recoveryFile = StoragePaths.GetWorkspaceRecoveryFile(lastPath);
+                 if (File.Exists(recoveryFile))
+                 {
+                     var label = Path.GetFileNameWithoutExtension(lastPath ?? "Unsaved Workspace");
+                     var result = MessageBox.Show($"A recovery file was found for '{label}'. Restore it?", "Workspace Recovery", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                     if (result == MessageBoxResult.Yes)
+                     {
+                         try
+                         {
+                             var model = _package.Load(recoveryFile, _serializer);
+                             _uiBuilder?.ClearWorkspace();
+                             foreach (var note in model.Notes) _uiBuilder?.CreateNote(note);
+                             _uiBuilder?.FinalizeNotes();
+                             foreach (var conn in model.Connections) _uiBuilder?.CreateConnection(conn);
+                             _uiBuilder?.ApplySettings(model.Settings);
+                             ScheduleTwineEndpointRefresh();
+                             _currentModel = model;
+                             _currentFilePath = null; // recovery = unsaved; require Save As
+                             _isRecoveredWorkspace = true;
+                             MarkDirty();
+                             Sidebar.UpdateWorkspaceTitle(_currentFilePath, _isDirty, _isRecoveredWorkspace);
+                         }
+                         catch (Exception ex)
+                         {
+                             MessageBox.Show($"Failed to restore recovery file:\n\n{ex.Message}\n\nThe recovery file may be corrupted.", "Recovery Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                             Debug.WriteLine($"[TryOfferRecoveryAutosave] Exception: {ex}");
+                         }
+                     }
+                 }
+             }
+             catch (Exception ex)
+             {
+                 Debug.WriteLine($"[TryOfferRecoveryAutosave] Failed to check recovery: {ex}");
+             }
+         }
+
+         private void MarkDirty()
+         {
+             if (_suppressDirtyForNewWorkspace) return;
+             _isDirty = true;
+             UpdateTitle();
+             Sidebar.UpdateWorkspaceTitle(_currentFilePath, _isDirty, _isRecoveredWorkspace);
+         }
+
+         private void ClearDirty()
+         {
+             _isDirty = false;
+             UpdateTitle();
+             Sidebar.UpdateWorkspaceTitle(_currentFilePath, _isDirty, _isRecoveredWorkspace);
+         }
+
          private void UpdateTitle()
          {
              var fileName = _currentFilePath != null ? System.IO.Path.GetFileName(_currentFilePath) : "(unsaved)";
@@ -86,7 +194,20 @@ namespace VirtualCorkboard
 
          private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
          {
-            if (!ConfirmDiscardIfDirty()) e.Cancel = true;
+            // In MainWindow_Closing before confirm discard logic (or after save):
+            if (!ConfirmDiscardIfDirty())
+            {
+                e.Cancel = true;
+                return;
+            }
+            // Remove only recovery for last workspace (if this session modified it)
+            try
+            {
+                var lastPath = StoragePaths.ReadLastWorkspacePath();
+                var recovery = StoragePaths.GetWorkspaceRecoveryFile(lastPath);
+                if (File.Exists(recovery) && !_isDirty) File.Delete(recovery); // delete only if clean exit
+            }
+            catch { }
          }
 
          // File operations
@@ -96,55 +217,125 @@ namespace VirtualCorkboard
              _uiBuilder?.ClearWorkspace();
              _currentModel = null;
              _currentFilePath = null;
-             MarkDirty(); // new empty workspace considered dirty until first save
-         }
-
-         private bool PerformSave(bool saveAs)
-         {
-             if (_snapshotProvider == null) return false;
-             if (_currentFilePath == null || saveAs)
-             {
-                 var sfd = new SaveFileDialog
-                 {
-                     Filter = "Virtual Corkboard (*.vcb)|*.vcb",
-                     DefaultExt = "vcb"
-                 };
-                 if (sfd.ShowDialog() != true) return false;
-                 _currentFilePath = sfd.FileName;
-             }
-
-             var model = new WorkspaceModel
-             {
-                 Notes = _snapshotProvider.CaptureNotes().ToList(),
-                 Connections = _snapshotProvider.CaptureConnections().ToList(),
-                 Settings = _snapshotProvider.CaptureSettings()
-             };
-             _package.Save(_currentFilePath!, model, _serializer);
-             _currentModel = model;
+             _isRecoveredWorkspace = false;
+             _suppressDirtyForNewWorkspace = true;
              ClearDirty();
-             return true;
+             Sidebar.UpdateWorkspaceTitle(_currentFilePath, _isDirty, _isRecoveredWorkspace);
          }
 
          private void PerformOpen()
          {
              if (!ConfirmDiscardIfDirty()) return;
-             var ofd = new OpenFileDialog
-             {
-                 Filter = "Virtual Corkboard (*.vcb)|*.vcb",
-                 DefaultExt = "vcb"
-             };
+             var ofd = new OpenFileDialog { Filter = "Virtual Corkboard (*.vcb)|*.vcb", DefaultExt = "vcb" };
              if (ofd.ShowDialog() != true) return;
-             var model = _package.Load(ofd.FileName, _serializer);
-             _currentFilePath = ofd.FileName;
-             _uiBuilder?.ClearWorkspace();
-             foreach (var note in model.Notes) _uiBuilder?.CreateNote(note);
-             _uiBuilder?.FinalizeNotes();
-             foreach (var conn in model.Connections) _uiBuilder?.CreateConnection(conn);
-             _uiBuilder?.ApplySettings(model.Settings);
-             _twineManager.RefreshAllConnections();
-             _currentModel = model; 
-             ClearDirty();
+
+             try
+             {
+                 var model = _package.Load(ofd.FileName, _serializer);
+                 _currentFilePath = ofd.FileName;
+                 _isRecoveredWorkspace = false;
+                 StoragePaths.WriteLastWorkspacePath(_currentFilePath);
+                 _uiBuilder?.ClearWorkspace();
+                 foreach (var note in model.Notes) _uiBuilder?.CreateNote(note);
+                 _uiBuilder?.FinalizeNotes();
+                 foreach (var conn in model.Connections) _uiBuilder?.CreateConnection(conn);
+                 _uiBuilder?.ApplySettings(model.Settings);
+                 _currentModel = model;
+                 ClearDirty();
+                 Sidebar.UpdateWorkspaceTitle(_currentFilePath, _isDirty, _isRecoveredWorkspace);
+                 ScheduleTwineEndpointRefresh();
+             }
+             catch (InvalidDataException ex)
+             {
+                 MessageBox.Show($"Cannot open workspace:\n\n{ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+             }
+             catch (Exception ex)
+             {
+                 MessageBox.Show($"An unexpected error occurred while loading the workspace:\n\n{ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                 Debug.WriteLine($"[PerformOpen] Exception: {ex}");
+             }
          }
+
+         private bool PerformSave(bool saveAs)
+         {
+             if (_snapshotProvider == null) return false;
+             // Recovery workspace or no path -> force Save As
+             if (_currentFilePath == null || saveAs || _isRecoveredWorkspace)
+             {
+                 var sfd = new SaveFileDialog
+                 {
+                     Filter = "Virtual Corkboard (*.vcb)|*.vcb",
+                     DefaultExt = "vcb",
+                     InitialDirectory = Directory.Exists(StoragePaths.UserSavesFolder)
+                         ? StoragePaths.UserSavesFolder
+                         : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+                 };
+                 if (sfd.ShowDialog() != true) return false;
+                 var chosenPath = sfd.FileName;
+                 // Block saving inside recovery folder
+                 if (IsPathInsideRecoveryFolder(chosenPath))
+                 {
+                     MessageBox.Show("You cannot save workspace files inside the Recovery folder. Please choose a different location.", "Invalid Save Location", MessageBoxButton.OK, MessageBoxImage.Warning);
+                     return false;
+                 }
+                 _currentFilePath = chosenPath;
+                 _isRecoveredWorkspace = false; // no longer a recovery session
+             }
+
+             try
+             {
+                 var model = new WorkspaceModel
+                 {
+                     Notes = _snapshotProvider.CaptureNotes().ToList(),
+                     Connections = _snapshotProvider.CaptureConnections().ToList(),
+                     Settings = _snapshotProvider.CaptureSettings()
+                 };
+                 _package.Save(_currentFilePath!, model, _serializer);
+                 StoragePaths.WriteLastWorkspacePath(_currentFilePath);
+                 try
+                 {
+                     var recovery = StoragePaths.GetWorkspaceRecoveryFile(_currentFilePath);
+                     if (File.Exists(recovery)) File.Delete(recovery);
+                 }
+                 catch { }
+                 _currentModel = model;
+                 ClearDirty();
+                 return true;
+             }
+             catch (Exception ex)
+             {
+                 MessageBox.Show($"Failed to save workspace:\n\n{ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                 Debug.WriteLine($"[PerformSave] Exception: {ex}");
+                 return false;
+             }
+         }
+
+         private bool IsPathInsideRecoveryFolder(string path)
+         {
+ try
+ {
+ var fullPath = Path.GetFullPath(path);
+ var recoveryRoot = Path.GetFullPath(StoragePaths.RecoveryFolder);
+ return fullPath.StartsWith(recoveryRoot, StringComparison.OrdinalIgnoreCase);
+ }
+ catch { return false; }
+ }
+
+         // If other load paths exist, call schedule there as well (JSON load etc.)
+         private void ScheduleTwineEndpointRefresh()
+         {
+             // Defer until layout pass completes so pins have proper size/transform
+             Dispatcher.InvokeAsync(() =>
+             {
+                 foreach (var pin in _pinOverlayManager.EnumeratePins().ToList())
+                 {
+                     pin.InvalidatePosition();
+                     _twineManager.UpdateAllConnectionsForPin(pin);
+                 }
+                 _twineManager.RefreshAllConnections();
+             }, DispatcherPriority.Loaded);
+         }
+
 
          // Allow shells to initiate twine drag from a pin
          public void StartTwineDragFromPin(PinControl pin)
@@ -155,6 +346,8 @@ namespace VirtualCorkboard
              var pos = pin.GetPinPositionOnWorkspace();
              _twineManager.StartTwineConnection(pin, pos);
              Mouse.Capture(this, CaptureMode.SubTree);
+             // In StartTwineDragFromPin after Mouse.Capture:
+             if (_suppressDirtyForNewWorkspace) _suppressDirtyForNewWorkspace = false;
              MarkDirty();
          }
 
@@ -184,7 +377,17 @@ namespace VirtualCorkboard
              Canvas.SetTop(note, top);
              _pinOverlayManager.Register(note, NoteKind.Text);
              note.IsSelected = false;
+             note.VisualBoundsChanged += NoteOnVisualBoundsChanged;
+             if (_suppressDirtyForNewWorkspace) _suppressDirtyForNewWorkspace = false;
              MarkDirty();
+         }
+
+         private void NoteOnVisualBoundsChanged(object? sender, EventArgs e)
+         {
+             if (sender is BaseNoteControl && !_suppressDirtyForNewWorkspace)
+             {
+                 MarkDirty();
+             }
          }
 
          private void MainWindow_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)

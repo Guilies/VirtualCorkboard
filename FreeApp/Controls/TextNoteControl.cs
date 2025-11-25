@@ -13,7 +13,7 @@ namespace VirtualCorkboard.Free.Controls
     public class TextNoteControl : BaseNoteControl
     {
         public static readonly DependencyProperty NoteTextProperty =
-            DependencyProperty.Register(nameof(NoteText), typeof(string), typeof(TextNoteControl), new PropertyMetadata(""));
+            DependencyProperty.Register(nameof(NoteText), typeof(string), typeof(TextNoteControl), new PropertyMetadata("", OnNoteTextChanged));
 
         public string NoteText
         {
@@ -49,12 +49,19 @@ namespace VirtualCorkboard.Free.Controls
                 UpdateSourceTrigger = System.Windows.Data.UpdateSourceTrigger.PropertyChanged
             });
 
+            _textBox.TextChanged += (_, _) => TextEdited?.Invoke(this);
             _textBox.MouseDoubleClick += (s, e) => { EnterEditMode(); _textBox.SelectAll(); };
             _textBox.PreviewMouseLeftButtonDown += (s, e) => { if (_textBox.IsReadOnly) OnMouseLeftButtonDown(e); };
             _textBox.PreviewMouseMove += (s, e) => { if (_textBox.IsReadOnly) OnMouseMove(e); };
             _textBox.PreviewMouseLeftButtonUp += (s, e) => { if (_textBox.IsReadOnly) OnMouseLeftButtonUp(e); };
 
             Content = _textBox;
+        }
+
+        public static event System.Action<TextNoteControl>? TextEdited;
+        private static void OnNoteTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            // Could be used for future formatting dirty tracking
         }
 
         protected override void EnterEditMode()

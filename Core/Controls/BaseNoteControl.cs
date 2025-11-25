@@ -530,13 +530,22 @@ namespace VirtualCorkboard.Controls
                         n.TwineManager.RemoveAllConnectionsForPin(n.Pin);
                     }
                     canvas.Children.Remove(n);
+                    NoteDeleted?.Invoke(n);
                 }
                 e.Handled = true;
             }
         }
 
+        public static event Action<BaseNoteControl>? NoteDeleted;
+
         public event EventHandler? VisualBoundsChanged;
-        internal void RaiseVisualBoundsChanged() => VisualBoundsChanged?.Invoke(this, EventArgs.Empty);
+        internal void RaiseVisualBoundsChanged()
+        {
+            VisualBoundsChanged?.Invoke(this, EventArgs.Empty);
+            NoteGeometryChanged?.Invoke(this); // global notification for dirty tracking
+        }
+
+        public static event Action<BaseNoteControl>? NoteGeometryChanged;
 
         protected virtual void EnterEditMode()
         {
