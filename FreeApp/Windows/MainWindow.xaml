@@ -8,7 +8,7 @@
  <Grid>
  <Rectangle x:Name="DimmingOverlay" Visibility="Visible" Fill="#80000000" IsHitTestVisible="False" Panel.ZIndex="0"/>
  <Canvas x:Name="TwineCanvas" Background="{x:Null}" IsHitTestVisible="True" Panel.ZIndex="2"/>
- <Canvas x:Name="NotesCanvas" Background="Transparent" MouseLeftButtonDown="NotesCanvas_MouseLeftButtonDown" Panel.ZIndex="1">
+ <Canvas x:Name="NotesCanvas" Background="Transparent" Panel.ZIndex="1">
  <Button Content="Toggle Sidebar" Click="ToggleSidebarButton_Click" Canvas.Left="10" Canvas.Top="10" Width="120" Height="32"/>
  </Canvas>
  <Canvas x:Name="PinsCanvas" Background="{x:Null}" Panel.ZIndex="3"/>
