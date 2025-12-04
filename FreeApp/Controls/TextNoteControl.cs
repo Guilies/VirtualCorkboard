@@ -23,7 +23,7 @@ namespace VirtualCorkboard.Free.Controls
 
         private readonly TextBox _textBox;
         private MouseButtonEventHandler? _outsideClickHandler;
-
+        public bool IsInEditMode { get; private set; }
         public TextNoteControl()
         {
             _textBox = new TextBox
@@ -67,6 +67,7 @@ namespace VirtualCorkboard.Free.Controls
         protected override void EnterEditMode()
         {
             if (!_textBox.IsReadOnly) return;
+            IsInEditMode = true;
             _textBox.IsReadOnly = false;
             _textBox.IsHitTestVisible = true;
             _textBox.Focus();
@@ -80,6 +81,7 @@ namespace VirtualCorkboard.Free.Controls
         protected override void ExitEditMode()
         {
             if (_textBox.IsReadOnly) return;
+            IsInEditMode = false;
             if (_outsideClickHandler != null)
             {
                 RemoveHandler(Mouse.PreviewMouseDownOutsideCapturedElementEvent, _outsideClickHandler);
@@ -91,6 +93,9 @@ namespace VirtualCorkboard.Free.Controls
             _textBox.SelectionLength = 0;
             _textBox.SelectionStart = _textBox.CaretIndex;
             if (_textBox.IsKeyboardFocusWithin) { Keyboard.ClearFocus(); }
+            
+            // Don't deselect - let the note remain selected after exiting edit mode
+            // This prevents the note from being deselected when clicked while already editing
             base.ExitEditMode();
             Debug.WriteLine("[TextNoteControl] Exiting edit mode, caret hidden and focus cleared.");
         }
@@ -99,6 +104,26 @@ namespace VirtualCorkboard.Free.Controls
         {
             if (!_textBox.IsReadOnly)
             {
+                // Check if the click is on this note's text box
+                // If it is, don't exit edit mode (allow continued editing)
+                if (e.OriginalSource is DependencyObject source)
+                {
+                    // Walk up the visual tree to see if the click is within this control
+                    DependencyObject current = source;
+                    while (current != null)
+                    {
+                        if (ReferenceEquals(current, this) || ReferenceEquals(current, _textBox))
+                        {
+                            // Click is within this note - keep editing
+                            e.Handled = false;
+                            return;
+                        }
+                        
+                        current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+                    }
+                }
+                
+                // Click was outside this note - exit edit mode
                 ExitEditMode();
                 e.Handled = false;
             }

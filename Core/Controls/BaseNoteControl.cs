@@ -86,10 +86,13 @@ namespace VirtualCorkboard.Controls
         private bool _isDragging;
         private System.Windows.Point _dragStart;
 
+        // Track if this note is currently in edit mode (can be overridden by derived types)
+        public virtual bool IsInEditMode { get; protected set; }
+
         // Group move snapshot
         private readonly List<(BaseNoteControl Note, double Left, double Top)> _groupStart = new();
 
-        // New: overlay pin injected by PinOverlayManager (no template pin lookup)
+        // overlay pin injected by PinOverlayManager (no template pin lookup)
         private PinControl? _overlayPin;
         public PinControl? Pin => _overlayPin;
 
@@ -357,8 +360,15 @@ namespace VirtualCorkboard.Controls
             foreach (var n in EnumerateNotesInCanvas(canvas))
             {
                 if (n == this) continue;
+                
+                // Exit edit mode for other notes (not the current one)
                 n.ExitEditMode();
-                n.IsSelected = false;
+                
+                // Only deselect if not in edit mode (in case exit didn't clear it)
+                if (!n.IsInEditMode)
+                {
+                    n.IsSelected = false;
+                }
             }
         }
 
@@ -554,7 +564,8 @@ namespace VirtualCorkboard.Controls
 
         protected virtual void ExitEditMode()
         {
-            IsSelected = false;
+            IsInEditMode = false;
+            // Don't automatically deselect - let derived types handle this
         }
 
         // Consolidated rectangle/constraint helpers

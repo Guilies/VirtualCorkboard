@@ -127,7 +127,12 @@ namespace VirtualCorkboard.Services
             {
                 if (child is BaseNoteControl note)
                 {
-                    note.IsSelected = false;
+                    // Don't deselect notes that are currently in edit mode
+                    // This prevents the note from being deselected when clicked while editing
+                    if (!note.IsInEditMode)
+                    {
+                        note.IsSelected = false;
+                    }
                 }
             }
         }
