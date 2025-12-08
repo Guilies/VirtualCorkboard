@@ -46,14 +46,39 @@ namespace VirtualCorkboard.Packaging
             if (!IsVersionCompatible(model.Version))
                 throw new InvalidDataException($"Incompatible workspace version.\nFile version: {model.Version}\nSupported version: {Persistence.PersistenceConstants.SaveVersion}");
 
+            // Migrate older versions to current version
+            model = MigrateToCurrentVersion(model);
+
             return model;
         }
 
         private static bool IsVersionCompatible(string fileVersion)
         {
-            // For MVP: exact version match required
-            // Future: implement semantic versioning with migration support
-            return fileVersion == Persistence.PersistenceConstants.SaveVersion;
+            // Support version 1.0 and 1.1 (migration will handle differences)
+            return fileVersion == "1.0" || fileVersion == Persistence.PersistenceConstants.SaveVersion;
+        }
+
+        private static WorkspaceModel MigrateToCurrentVersion(WorkspaceModel model)
+        {
+            if (model.Version == "1.0")
+            {
+                // Migrate from 1.0 to 1.1
+                // Version 1.0 didn't have WorkspaceWidth/WorkspaceHeight in settings
+                // Apply defaults if they're not set or are zero
+                if (model.Settings != null)
+                {
+                    if (model.Settings.WorkspaceWidth <= 0)
+                        model.Settings.WorkspaceWidth = 5000.0;
+                    
+                    if (model.Settings.WorkspaceHeight <= 0)
+                        model.Settings.WorkspaceHeight = 5000.0;
+                }
+
+                // Update version to current
+                model.Version = Persistence.PersistenceConstants.SaveVersion;
+            }
+
+            return model;
         }
     }
 }

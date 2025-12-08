@@ -3,7 +3,8 @@ using VirtualCorkboard.Controls;
 using VirtualCorkboard.Persistence.Models;
 using VirtualCorkboard.Serialization;
 using VirtualCorkboard.Twine;
-using VirtualCorkboard.Free.Controls; // added
+using VirtualCorkboard.Free.Controls;
+using VirtualCorkboard.Services;
 
 namespace VirtualCorkboard.Free.Serialization
 {
@@ -11,11 +12,18 @@ namespace VirtualCorkboard.Free.Serialization
     {
         private readonly Canvas _notesCanvas;
         private readonly TwineManager _twineManager;
+        private WorkspaceViewportService? _viewportService;
 
         public WorkspaceSnapshotProvider(Canvas notesCanvas, TwineManager twineManager)
         {
             _notesCanvas = notesCanvas ?? throw new ArgumentNullException(nameof(notesCanvas));
             _twineManager = twineManager ?? throw new ArgumentNullException(nameof(twineManager));
+        }
+
+        // Allow viewport service to be set after construction (since it depends on XAML elements)
+        public void SetViewportService(WorkspaceViewportService viewportService)
+        {
+            _viewportService = viewportService;
         }
 
         public IEnumerable<NoteModel> CaptureNotes()
@@ -69,8 +77,24 @@ namespace VirtualCorkboard.Free.Serialization
 
         public WorkspaceSettingsModel CaptureSettings()
         {
-            // Placeholder for future zoom/pan/theme capture
-            return new WorkspaceSettingsModel();
+            var settings = new WorkspaceSettingsModel();
+
+            if (_viewportService != null)
+            {
+                var (zoom, panX, panY) = _viewportService.GetViewportState();
+                settings.Zoom = zoom;
+                settings.PanX = panX;
+                settings.PanY = panY;
+            }
+
+            // Capture canvas size (assuming NotesCanvas parent has Width/Height set)
+            if (_notesCanvas.Parent is System.Windows.FrameworkElement container)
+            {
+                settings.WorkspaceWidth = container.Width > 0 ? container.Width : 5000.0;
+                settings.WorkspaceHeight = container.Height > 0 ? container.Height : 5000.0;
+            }
+
+            return settings;
         }
     }
 }

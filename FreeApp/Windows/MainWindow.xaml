@@ -5,14 +5,48 @@
  Title="Virtual Corkboard" Height="1080" Width="1920"
  Background="Transparent" AllowsTransparency="True" WindowStyle="None" WindowState="Maximized">
  <Grid>
- <Grid>
+ <!-- Dimming overlay stays outside ScrollViewer so it covers entire window -->
  <Rectangle x:Name="DimmingOverlay" Visibility="Visible" Fill="#80000000" IsHitTestVisible="False" Panel.ZIndex="0"/>
- <Canvas x:Name="TwineCanvas" Background="{x:Null}" IsHitTestVisible="True" Panel.ZIndex="2"/>
- <Canvas x:Name="NotesCanvas" Background="Transparent" Panel.ZIndex="1">
- <Button Content="Toggle Sidebar" Click="ToggleSidebarButton_Click" Canvas.Left="10" Canvas.Top="10" Width="120" Height="32"/>
- </Canvas>
- <Canvas x:Name="PinsCanvas" Background="{x:Null}" Panel.ZIndex="3"/>
- </Grid>
+ 
+ <!-- ScrollViewer for pan support (though we're handling panning programmatically) -->
+ <ScrollViewer x:Name="WorkspaceScrollViewer" 
+               HorizontalScrollBarVisibility="Hidden" 
+               VerticalScrollBarVisibility="Hidden"
+               Background="Transparent"
+               Panel.ZIndex="1">
+     <!-- Container Grid that will receive the transform (zoom + pan) -->
+     <Grid x:Name="WorkspaceContainer" 
+           Width="5000" 
+           Height="5000"
+           Background="Transparent">
+         <!-- All workspace canvases inside the transformable container -->
+         <Canvas x:Name="TwineCanvas" Background="{x:Null}" IsHitTestVisible="True" Panel.ZIndex="2"/>
+         <Canvas x:Name="NotesCanvas" Background="Transparent" Panel.ZIndex="1">
+             <Button Content="Toggle Sidebar" Click="ToggleSidebarButton_Click" Canvas.Left="10" Canvas.Top="10" Width="120" Height="32"/>
+         </Canvas>
+         <Canvas x:Name="PinsCanvas" Background="{x:Null}" Panel.ZIndex="3"/>
+     </Grid>
+ </ScrollViewer>
+ 
+ <!-- Sidebar stays outside ScrollViewer so it's always visible -->
  <controls:SidebarControl x:Name="Sidebar" Width="220" Visibility="Collapsed" VerticalAlignment="Stretch" HorizontalAlignment="Left" Panel.ZIndex="10" />
+ 
+ <!-- Zoom level indicator in bottom-right corner -->
+ <Border x:Name="ZoomIndicator" 
+         Background="#CC000000" 
+         BorderBrush="#FF666666" 
+         BorderThickness="1"
+         CornerRadius="4"
+         Padding="8,4"
+         HorizontalAlignment="Right" 
+         VerticalAlignment="Bottom"
+         Margin="0,0,10,10"
+         Panel.ZIndex="15">
+     <TextBlock x:Name="ZoomLevelText" 
+                Text="100%" 
+                Foreground="White" 
+                FontSize="14"
+                FontFamily="Segoe UI"/>
+ </Border>
  </Grid>
 </Window>

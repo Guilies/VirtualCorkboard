@@ -27,6 +27,7 @@ namespace VirtualCorkboard
         private readonly InputController _inputController;
         private readonly TwineInteractionService _twineInteraction;
         private readonly NoteInteractionService _noteInteraction;
+        private readonly WorkspaceViewportService _viewportService;
 
         // IWorkspaceDirtyState implementation for autosave
         public bool IsDirty => _workspaceController.IsDirty;
@@ -63,6 +64,11 @@ namespace VirtualCorkboard
             _twineInteraction = new TwineInteractionService(TwineCanvas, _twineManager, _pinOverlayManager, this);
             _inputController = new InputController(NotesCanvas, TwineCanvas, _twineManager, _twineInteraction);
             _noteInteraction = new NoteInteractionService(NotesCanvas, _twineManager, _pinOverlayManager);
+            _viewportService = new WorkspaceViewportService(WorkspaceContainer, WorkspaceContainer, WorkspaceScrollViewer);
+
+            // Connect viewport service to snapshot/builder after it's created
+            snapshotProvider.SetViewportService(_viewportService);
+            uiBuilder.SetViewportService(_viewportService, WorkspaceContainer);
 
             // Wire up service events
             _workspaceController.WorkspaceStateChanged += WorkspaceController_StateChanged;
@@ -74,6 +80,13 @@ namespace VirtualCorkboard
 
             _twineInteraction.TwineConnectionCompleted += () => _workspaceController.MarkDirty();
             _noteInteraction.NoteModified += () => _workspaceController.MarkDirty();
+
+            // Wire up viewport events for dirty tracking
+            _viewportService.ZoomChanged += (s, zoom) => _workspaceController.MarkDirty();
+            _viewportService.PanChanged += (s, pan) => _workspaceController.MarkDirty();
+            
+            // Wire up zoom indicator update
+            _viewportService.ZoomChanged += (s, zoom) => UpdateZoomIndicator(zoom);
 
             // Wire up sidebar events
             Sidebar.AddTextNoteRequested += Sidebar_AddTextNoteRequested;
@@ -87,6 +100,10 @@ namespace VirtualCorkboard
             this.PreviewKeyDown += (s, e) => _inputController.HandlePreviewKeyDown(e);
             this.PreviewMouseUp += (s, e) => _inputController.HandlePreviewMouseUp(e);
             this.MouseMove += (s, e) => _inputController.HandleMouseMove(e);
+            this.PreviewMouseWheel += (s, e) => _viewportService.HandleMouseWheel(e);
+            WorkspaceScrollViewer.PreviewMouseDown += (s, e) => _viewportService.HandleMouseDown(e);
+            WorkspaceScrollViewer.PreviewMouseUp += (s, e) => _viewportService.HandleMouseUp(e);
+            WorkspaceScrollViewer.PreviewMouseMove += (s, e) => _viewportService.HandleMouseMove(e);
             TwineCanvas.MouseLeftButtonDown += (s, e) => _inputController.HandleTwineCanvasMouseLeftButtonDown(e);
             TwineCanvas.KeyDown += (s, e) => _inputController.HandleTwineCanvasKeyDown(e);
             NotesCanvas.MouseLeftButtonDown += (s, e) => _inputController.HandleNotesCanvasMouseLeftButtonDown(e);
@@ -104,6 +121,9 @@ namespace VirtualCorkboard
             _autosaveService.SetRecoveryPathProvider(() => _workspaceController.GetRecoveryFileForCurrentWorkspace());
             _autosaveService.Start();
             _workspaceController.TryOfferRecovery();
+            
+            // Initialize zoom indicator
+            UpdateZoomIndicator(_viewportService.ZoomLevel);
 
             // Subscribe to global note events for dirty tracking
             BaseNoteControl.NoteDeleted += _ => _workspaceController.MarkDirty();
@@ -131,6 +151,13 @@ namespace VirtualCorkboard
         {
             var fileName = filePath != null ? System.IO.Path.GetFileName(filePath) : "(unsaved)";
             this.Title = isDirty ? $"VirtualCorkboard - {fileName} *" : $"VirtualCorkboard - {fileName}";
+        }
+
+        private void UpdateZoomIndicator(double zoomLevel)
+        {
+            // Update zoom indicator text with percentage
+            int zoomPercent = (int)Math.Round(zoomLevel * 100);
+            ZoomLevelText.Text = $"{zoomPercent}%";
         }
 
         private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)

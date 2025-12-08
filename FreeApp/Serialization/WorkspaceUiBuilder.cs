@@ -1,28 +1,39 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
 using VirtualCorkboard.Controls;
 using VirtualCorkboard.Free.Controls;
 using VirtualCorkboard.Persistence.Models;
 using VirtualCorkboard.Serialization;
 using VirtualCorkboard.Twine;
+using VirtualCorkboard.Services;
 
 namespace VirtualCorkboard.Free.Serialization
 {
     public class WorkspaceUiBuilder : IWorkspaceBuilder
-        {
+    {
         private readonly Canvas _notesCanvas;
         private readonly TwineManager _twineManager;
         private readonly PinOverlayManager _pinOverlayManager;
         private readonly List<BaseNoteControl> _createdNotes = new();
         private readonly Dictionary<Guid, BaseNoteControl> _idToNote = new();
+        private WorkspaceViewportService? _viewportService;
+        private FrameworkElement? _workspaceContainer;
 
         public WorkspaceUiBuilder(Canvas notesCanvas, TwineManager twineManager, PinOverlayManager pinOverlayManager)
         {
             _notesCanvas = notesCanvas;
             _twineManager = twineManager;
             _pinOverlayManager = pinOverlayManager;
+        }
+
+        // Allow viewport service and container to be set after construction
+        public void SetViewportService(WorkspaceViewportService viewportService, FrameworkElement workspaceContainer)
+        {
+            _viewportService = viewportService;
+            _workspaceContainer = workspaceContainer;
         }
 
         public void ClearWorkspace()
@@ -99,7 +110,20 @@ namespace VirtualCorkboard.Free.Serialization
 
         public void ApplySettings(WorkspaceSettingsModel settings)
         {
-            // Placeholder for zoom/pan/theme restore
+            if (settings == null) return;
+
+            // Restore canvas size
+            if (_workspaceContainer != null)
+            {
+                _workspaceContainer.Width = settings.WorkspaceWidth;
+                _workspaceContainer.Height = settings.WorkspaceHeight;
+            }
+
+            // Restore viewport state (zoom/pan)
+            if (_viewportService != null)
+            {
+                _viewportService.RestoreViewportState(settings.Zoom, settings.PanX, settings.PanY);
+            }
         }
     }
 }
