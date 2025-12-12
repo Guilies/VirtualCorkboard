@@ -197,13 +197,13 @@ namespace VirtualCorkboard.Services
             // Horizontal clamp
             if (dx < 0)
             {
-                // Panning left → canvas moves right → clamp RIGHT edge
+                // Panning left -> canvas moves right -> clamp RIGHT edge
                 if (right < minVisibleX)
                     _translateTransform.X += (minVisibleX - right);
             }
             else if (dx > 0)
             {
-                // Panning right → canvas moves left → clamp LEFT edge
+                // Panning right -> canvas moves left -> clamp LEFT edge
                 if (left > maxVisibleX)
                     _translateTransform.X -= (left - maxVisibleX);
             }

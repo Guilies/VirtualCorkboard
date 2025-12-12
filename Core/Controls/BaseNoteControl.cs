@@ -532,19 +532,22 @@ namespace VirtualCorkboard.Controls
             if (e.Key == Key.Delete && Parent is Canvas canvas)
             {
                 var toRemove = EnumerateNotesInCanvas(canvas).Where(n => n.IsSelected).ToList();
-                foreach (var n in toRemove)
-                {
-                    // Remove associated twines (both directions)
-                    if (n.TwineManager != null && n.Pin != null)
-                    {
-                        n.TwineManager.RemoveAllConnectionsForPin(n.Pin);
-                    }
-                    canvas.Children.Remove(n);
-                    NoteDeleted?.Invoke(n);
-                }
+                if (toRemove.Count == 0)
+                    return;
+
+                // Raise event for command-based deletion
+                // The actual command wrapping will be done by the handler
+                NoteDeletionRequested?.Invoke(toRemove);
+                
                 e.Handled = true;
             }
         }
+
+        /// <summary>
+        /// Event raised when notes should be deleted.
+        /// Allows MainWindow or other controllers to handle deletion via commands.
+        /// </summary>
+        public static event Action<System.Collections.Generic.List<BaseNoteControl>>? NoteDeletionRequested;
 
         public static event Action<BaseNoteControl>? NoteDeleted;
 

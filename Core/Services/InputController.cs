@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using VirtualCorkboard.Commands;
 using VirtualCorkboard.Controls;
 using VirtualCorkboard.Twine;
 
@@ -17,6 +18,7 @@ namespace VirtualCorkboard.Services
         private readonly Canvas _twineCanvas;
         private readonly TwineManager _twineManager;
         private readonly TwineInteractionService _twineInteraction;
+        private readonly CommandManager _commandManager;
 
         public event Action? SaveRequested;
         public event Action? ToggleActiveInactiveRequested;
@@ -26,16 +28,37 @@ namespace VirtualCorkboard.Services
             Canvas notesCanvas,
             Canvas twineCanvas,
             TwineManager twineManager,
-            TwineInteractionService twineInteraction)
+            TwineInteractionService twineInteraction,
+            CommandManager commandManager)
         {
             _notesCanvas = notesCanvas ?? throw new ArgumentNullException(nameof(notesCanvas));
             _twineCanvas = twineCanvas ?? throw new ArgumentNullException(nameof(twineCanvas));
             _twineManager = twineManager ?? throw new ArgumentNullException(nameof(twineManager));
             _twineInteraction = twineInteraction ?? throw new ArgumentNullException(nameof(twineInteraction));
+            _commandManager = commandManager ?? throw new ArgumentNullException(nameof(commandManager));
         }
 
         public void HandleKeyDown(KeyEventArgs e)
         {
+            var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+            // Undo: Ctrl+Z (without Shift)
+            if (ctrl && !shift && e.Key == Key.Z)
+            {
+                _commandManager.Undo();
+                e.Handled = true;
+                return;
+            }
+
+            // Redo: Ctrl+Shift+Z
+            if (ctrl && shift && e.Key == Key.Z)
+            {
+                _commandManager.Redo();
+                e.Handled = true;
+                return;
+            }
+
             // Delete key to delete selected twine connections or notes
             if (e.Key == Key.Delete)
             {
@@ -54,7 +77,7 @@ namespace VirtualCorkboard.Services
             }
 
             // Ctrl+S to save
-            if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            if (e.Key == Key.S && ctrl)
             {
                 SaveRequested?.Invoke();
             }

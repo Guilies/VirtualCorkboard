@@ -1,6 +1,9 @@
+using System;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using VirtualCorkboard.Commands;
 using VirtualCorkboard.Controls;
 using VirtualCorkboard.Twine;
 using VirtualCorkboard.Free.Controls;
@@ -24,6 +27,7 @@ namespace VirtualCorkboard
         // New: Service-based architecture
         private readonly WorkspaceController _workspaceController;
         private readonly AutosaveService _autosaveService;
+        private readonly Services.CommandManager _commandManager;
         private readonly InputController _inputController;
         private readonly TwineInteractionService _twineInteraction;
         private readonly NoteInteractionService _noteInteraction;
@@ -37,6 +41,11 @@ namespace VirtualCorkboard
             set => _workspaceController.SuppressDirtyForNewWorkspace = value;
         }
 
+        public void MarkDirty()
+        {
+            _workspaceController.MarkDirty();
+        }
+
         // Expose key elements/managers for shells
         public Canvas NotesCanvasElement => NotesCanvas;
         public Canvas PinsCanvasElement => PinsCanvas;
@@ -44,6 +53,7 @@ namespace VirtualCorkboard
         public PinOverlayManager PinOverlayManager => _pinOverlayManager;
         public TwineManager TwineManager => _twineManager;
         public Controls.SidebarControl SidebarControl => Sidebar;
+        public Services.CommandManager CommandManager => _commandManager;
 
         public MainWindow()
         {
@@ -61,8 +71,9 @@ namespace VirtualCorkboard
 
             _workspaceController = new WorkspaceController(package, serializer, snapshotProvider, uiBuilder);
             _autosaveService = new AutosaveService(this, package, serializer, snapshotProvider, TimeSpan.FromSeconds(30));
+            _commandManager = new Services.CommandManager(this);
             _twineInteraction = new TwineInteractionService(TwineCanvas, _twineManager, _pinOverlayManager, this);
-            _inputController = new InputController(NotesCanvas, TwineCanvas, _twineManager, _twineInteraction);
+            _inputController = new InputController(NotesCanvas, TwineCanvas, _twineManager, _twineInteraction, _commandManager);
             _noteInteraction = new NoteInteractionService(NotesCanvas, _twineManager, _pinOverlayManager);
             _viewportService = new WorkspaceViewportService(WorkspaceContainer, WorkspaceContainer, WorkspaceScrollViewer);
 
@@ -127,6 +138,7 @@ namespace VirtualCorkboard
 
             // Subscribe to global note events for dirty tracking
             BaseNoteControl.NoteDeleted += _ => _workspaceController.MarkDirty();
+            BaseNoteControl.NoteDeletionRequested += HandleNoteDeletionRequested;
             TextNoteControl.TextEdited += _ =>
             {
                 if (_workspaceController.SuppressDirtyForNewWorkspace)
@@ -188,10 +200,25 @@ namespace VirtualCorkboard
 
         private void Sidebar_AddTextNoteRequested(object? sender, System.EventArgs e)
         {
-            var note = _noteInteraction.CreateNote<TextNoteControl>(NoteKind.Text);
-            note.Width = 210;
-            note.Height = 160;
-            note.NoteText = "New Note";
+            // Create command to add text note
+            var command = new Free.Commands.AddNoteCommand(
+                _noteInteraction,
+                _pinOverlayManager,
+                _twineManager,
+                NotesCanvas,
+                typeof(Free.Controls.TextNoteControl),
+                NoteKind.Text,
+                new Point(100, 100), // Default position
+                new Size(210, 160)   // Default size
+            );
+
+            _commandManager.Execute(command);
+
+            // Set properties on the created note
+            if (command.CreatedNote is Free.Controls.TextNoteControl textNote)
+            {
+                textNote.NoteText = "New Note";
+            }
 
             if (_workspaceController.SuppressDirtyForNewWorkspace)
                 _workspaceController.SuppressDirtyForNewWorkspace = false;
@@ -233,6 +260,39 @@ namespace VirtualCorkboard
         {
             _twineManager.ClearSelection();
             if (!IsFocused) Focus();
+        }
+
+        private void HandleNoteDeletionRequested(System.Collections.Generic.List<BaseNoteControl> toRemove)
+        {
+            if (toRemove == null || toRemove.Count == 0)
+                return;
+
+            // Create individual removal commands for each note
+            var removalCommands = toRemove.Select(note =>
+            {
+                return (Commands.ICommand)new Free.Commands.RemoveNoteCommand(
+                    _pinOverlayManager,
+                    _twineManager,
+                    NotesCanvas,
+                    note.NoteId);
+            }).ToList();
+
+            // Wrap in composite if multiple notes, otherwise use single command
+            Commands.ICommand finalCommand;
+            if (removalCommands.Count == 1)
+            {
+                finalCommand = removalCommands[0];
+            }
+            else
+            {
+                finalCommand = new Commands.CompositeCommand(
+                    removalCommands,
+                    $"Delete {removalCommands.Count} Notes"
+                );
+            }
+
+            // Execute through command manager
+            _commandManager.Execute(finalCommand);
         }
     }
 }

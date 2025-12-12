@@ -7,5 +7,6 @@ namespace VirtualCorkboard.Services
     {
         bool IsDirty { get; }
         bool SuppressDirtyForNewWorkspace { get; set; }
+        void MarkDirty();
     }
 }
