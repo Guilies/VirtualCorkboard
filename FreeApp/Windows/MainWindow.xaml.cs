@@ -24,6 +24,9 @@ namespace VirtualCorkboard
         private readonly TwineManager _twineManager;
         private readonly PinOverlayManager _pinOverlayManager;
 
+        // Track active transform commands
+        private Free.Commands.MoveNoteCommand? _activeMoveCommand;
+
         // New: Service-based architecture
         private readonly WorkspaceController _workspaceController;
         private readonly AutosaveService _autosaveService;
@@ -139,6 +142,9 @@ namespace VirtualCorkboard
             // Subscribe to global note events for dirty tracking
             BaseNoteControl.NoteDeleted += _ => _workspaceController.MarkDirty();
             BaseNoteControl.NoteDeletionRequested += HandleNoteDeletionRequested;
+            BaseNoteControl.NoteMoveStarted += HandleNoteMoveStarted;
+            BaseNoteControl.NoteMoveCompleted += HandleNoteMoveCompleted;
+            BaseNoteControl.NoteResizeCompleted += HandleNoteResizeCompleted;
             TextNoteControl.TextEdited += _ =>
             {
                 if (_workspaceController.SuppressDirtyForNewWorkspace)
@@ -294,5 +300,47 @@ namespace VirtualCorkboard
             // Execute through command manager
             _commandManager.Execute(finalCommand);
         }
+
+        private void HandleNoteMoveStarted(System.Collections.Generic.List<BaseNoteControl> notes)
+        {
+            if (notes == null || notes.Count == 0)
+                return;
+
+            // Create move command with starting positions
+            _activeMoveCommand = new Free.Commands.MoveNoteCommand(NotesCanvas, notes);
+        }
+
+        private void HandleNoteMoveCompleted(System.Collections.Generic.List<BaseNoteControl> notes)
+        {
+            if (_activeMoveCommand == null || notes == null || notes.Count == 0)
+                return;
+
+            // Update final positions
+            _activeMoveCommand.UpdateFinalPositions(notes);
+
+            // Only create command if notes actually moved
+            if (_activeMoveCommand.HasMoved())
+            {
+                _commandManager.Execute(_activeMoveCommand);
+            }
+
+            _activeMoveCommand = null;
+        }
+
+        private void HandleNoteResizeCompleted(BaseNoteControl note, Rect oldBounds, Rect newBounds)
+        {
+            if (note == null)
+                return;
+
+            // Create and execute resize command
+            var command = new Free.Commands.ResizeNoteCommand(
+                NotesCanvas,
+                note.NoteId,
+                oldBounds,
+                newBounds);
+
+            _commandManager.Execute(command);
+        }
     }
 }
+

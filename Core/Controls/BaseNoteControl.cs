@@ -92,6 +92,9 @@ namespace VirtualCorkboard.Controls
         // Group move snapshot
         private readonly List<(BaseNoteControl Note, double Left, double Top)> _groupStart = new();
 
+        // Command tracking for undo/redo
+        private Rect _resizeStartBounds;
+
         // overlay pin injected by PinOverlayManager (no template pin lookup)
         private PinControl? _overlayPin;
         public PinControl? Pin => _overlayPin;
@@ -163,11 +166,21 @@ namespace VirtualCorkboard.Controls
         {
             // Avoid pin push-back oscillations while resizing; we clamp locally
             PinOverlayManager.SuppressDuringResize = true;
+            
+            // Capture starting bounds for resize command
+            _resizeStartBounds = GetCurrentRectOnCanvas();
         }
 
         private void ResizeThumb_DragCompleted(object sender, DragCompletedEventArgs e)
         {
             PinOverlayManager.SuppressDuringResize = false;
+            
+            // Create resize command if bounds changed
+            var newBounds = GetCurrentRectOnCanvas();
+            if (!BoundsEqual(_resizeStartBounds, newBounds))
+            {
+                NoteResizeCompleted?.Invoke(this, _resizeStartBounds, newBounds);
+            }
         }
 
         private static readonly Dictionary<string, ResizeEdge[]> ThumbEdges = new()
@@ -469,6 +482,9 @@ namespace VirtualCorkboard.Controls
                     // Focus this note so Delete works during/after drag
                     Keyboard.Focus(this);
                     e.Handled = true;
+                    
+                    // Notify move command tracking started
+                    NoteMoveStarted?.Invoke(EnumerateNotesInCanvas(canvas).Where(n => n.IsSelected).ToList());
                     return;
                 }
 
@@ -484,6 +500,9 @@ namespace VirtualCorkboard.Controls
                 _isDragging = true;
                 CaptureMouse();
                 e.Handled = true;
+                
+                // Notify move command tracking started
+                NoteMoveStarted?.Invoke(new List<BaseNoteControl> { this });
             }
         }
 
@@ -507,6 +526,8 @@ namespace VirtualCorkboard.Controls
                 // Final update for twine connections for the moved group
                 if (Parent is Canvas canvas)
                 {
+                    var movedNotes = _groupStart.Select(g => g.Note).ToList();
+                    
                     foreach (var entry in _groupStart)
                     {
                         if (entry.Note.TwineManager != null && entry.Note.Pin != null)
@@ -515,6 +536,9 @@ namespace VirtualCorkboard.Controls
                             entry.Note.TwineManager.UpdateAllConnectionsForPin(entry.Note.Pin);
                         }
                     }
+                    
+                    // Notify move command tracking completed
+                    NoteMoveCompleted?.Invoke(movedNotes);
                 }
 
                 _groupStart.Clear();
@@ -551,6 +575,21 @@ namespace VirtualCorkboard.Controls
 
         public static event Action<BaseNoteControl>? NoteDeleted;
 
+        /// <summary>
+        /// Event raised when note move operation starts.
+        /// </summary>
+        public static event Action<System.Collections.Generic.List<BaseNoteControl>>? NoteMoveStarted;
+
+        /// <summary>
+        /// Event raised when note move operation completes.
+        /// </summary>
+        public static event Action<System.Collections.Generic.List<BaseNoteControl>>? NoteMoveCompleted;
+
+        /// <summary>
+        /// Event raised when note resize operation completes.
+        /// </summary>
+        public static event Action<BaseNoteControl, Rect, Rect>? NoteResizeCompleted;
+
         public event EventHandler? VisualBoundsChanged;
         internal void RaiseVisualBoundsChanged()
         {
@@ -569,6 +608,17 @@ namespace VirtualCorkboard.Controls
         {
             IsInEditMode = false;
             // Don't automatically deselect - let derived types handle this
+        }
+
+        /// <summary>
+        /// Helper to check if two Rect bounds are equal.
+        /// </summary>
+        private static bool BoundsEqual(Rect a, Rect b)
+        {
+            return DoubleUtil.AreClose(a.Left, b.Left) &&
+                   DoubleUtil.AreClose(a.Top, b.Top) &&
+                   DoubleUtil.AreClose(a.Width, b.Width) &&
+                   DoubleUtil.AreClose(a.Height, b.Height);
         }
 
         // Consolidated rectangle/constraint helpers

@@ -111,7 +111,7 @@ namespace VirtualCorkboard.Controls
             }
         }
 
-        private void UpdatePinPosition(BaseNoteControl note, PinControl pin)
+        public void UpdatePinPosition(BaseNoteControl note, PinControl pin)
         {
             double left = Canvas.GetLeft(note);
             double top = Canvas.GetTop(note);

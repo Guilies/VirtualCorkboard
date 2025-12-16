@@ -149,9 +149,10 @@ namespace VirtualCorkboard.Controls
             }
         }
 
-        // Intentionally left blank; used as a signal for layout/twine updates
+        // Now clears cached position, forcing recalculation on next access
         public void InvalidatePosition()
         {
+            _lastKnownPosition = new Point(0, 0);
         }
     }
 }
