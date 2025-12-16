@@ -55,7 +55,7 @@ namespace VirtualCorkboard
         public Canvas TwineCanvasElement => TwineCanvas;
         public PinOverlayManager PinOverlayManager => _pinOverlayManager;
         public TwineManager TwineManager => _twineManager;
-        public Controls.SidebarControl SidebarControl => Sidebar;
+        public SidebarControl SidebarControl => Sidebar;
         public Services.CommandManager CommandManager => _commandManager;
 
         public MainWindow()
@@ -145,6 +145,7 @@ namespace VirtualCorkboard
             BaseNoteControl.NoteMoveStarted += HandleNoteMoveStarted;
             BaseNoteControl.NoteMoveCompleted += HandleNoteMoveCompleted;
             BaseNoteControl.NoteResizeCompleted += HandleNoteResizeCompleted;
+            BaseNoteControl.NoteContentEditCompleted += HandleNoteContentEditCompleted;
             TextNoteControl.TextEdited += _ =>
             {
                 if (_workspaceController.SuppressDirtyForNewWorkspace)
@@ -341,6 +342,23 @@ namespace VirtualCorkboard
 
             _commandManager.Execute(command);
         }
+
+        private void HandleNoteContentEditCompleted(BaseNoteControl note, object? oldContent, object? newContent)
+        {
+            if (note == null)
+                return;
+
+            // Create and execute edit command
+            var command = new Free.Commands.EditNoteContentCommand(
+                NotesCanvas,
+                note.NoteId,
+                oldContent,
+                newContent);
+
+            _commandManager.Execute(command);
+        }
     }
 }
+
+
 

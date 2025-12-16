@@ -59,6 +59,36 @@ namespace VirtualCorkboard.Free.Controls
         }
 
         public static event System.Action<TextNoteControl>? TextEdited;
+
+        /// <summary>
+        /// Captures current text content for undo/redo.
+        /// </summary>
+        // Make sure to update after adding formatting features!
+        protected override object? CaptureContent()
+        {
+            return NoteText ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Compares two text content objects.
+        /// </summary>
+        protected override bool ContentEquals(object? content1, object? content2)
+        {
+            string str1 = content1 as string ?? string.Empty;
+            string str2 = content2 as string ?? string.Empty;
+            return str1 == str2;
+        }
+
+        /// <summary>
+        /// Applies text content for undo/redo.
+        /// </summary>
+        public override void ApplyContent(object? content)
+        {
+            if (content is string text)
+            {
+                NoteText = text;
+            }
+        }
         private static void OnNoteTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         {
             // Could be used for future formatting dirty tracking
@@ -67,6 +97,10 @@ namespace VirtualCorkboard.Free.Controls
         protected override void EnterEditMode()
         {
             if (!_textBox.IsReadOnly) return;
+            
+            // Call base to capture content
+            base.EnterEditMode();
+            
             IsInEditMode = true;
             _textBox.IsReadOnly = false;
             _textBox.IsHitTestVisible = true;
@@ -75,12 +109,13 @@ namespace VirtualCorkboard.Free.Controls
             try { Mouse.Capture(this, CaptureMode.SubTree); } catch { }
             _outsideClickHandler ??= GlobalWindowClickWhileEditing;
             AddHandler(Mouse.PreviewMouseDownOutsideCapturedElementEvent, _outsideClickHandler, handledEventsToo: true);
-            System.Windows.Application.Current.MainWindow.PreviewMouseDown += GlobalWindowClickWhileEditing;
+            Application.Current.MainWindow.PreviewMouseDown += GlobalWindowClickWhileEditing;
         }
 
         protected override void ExitEditMode()
         {
             if (_textBox.IsReadOnly) return;
+            
             IsInEditMode = false;
             if (_outsideClickHandler != null)
             {
@@ -94,9 +129,10 @@ namespace VirtualCorkboard.Free.Controls
             _textBox.SelectionStart = _textBox.CaretIndex;
             if (_textBox.IsKeyboardFocusWithin) { Keyboard.ClearFocus(); }
             
-            // Don't deselect - let the note remain selected after exiting edit mode
-            // This prevents the note from being deselected when clicked while already editing
+            // Call base to check for content changes and create command if needed
             base.ExitEditMode();
+            
+            // Don't deselect - let the note remain selected after exiting edit mode
             Debug.WriteLine("[TextNoteControl] Exiting edit mode, caret hidden and focus cleared.");
         }
 
@@ -119,7 +155,7 @@ namespace VirtualCorkboard.Free.Controls
                             return;
                         }
                         
-                        current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+                        current = VisualTreeHelper.GetParent(current);
                     }
                 }
                 

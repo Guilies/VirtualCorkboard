@@ -94,6 +94,10 @@ namespace VirtualCorkboard.Controls
 
         // Command tracking for undo/redo
         private Rect _resizeStartBounds;
+        
+        // Track edit session state for undo/redo
+        private bool _isEditSessionActive;
+        private object? _contentAtEditStart;
 
         // overlay pin injected by PinOverlayManager (no template pin lookup)
         private PinControl? _overlayPin;
@@ -590,6 +594,12 @@ namespace VirtualCorkboard.Controls
         /// </summary>
         public static event Action<BaseNoteControl, Rect, Rect>? NoteResizeCompleted;
 
+        /// <summary>
+        /// Event raised when an edit session completes with content changes.
+        /// Parameters: (note, oldContent, newContent)
+        /// </summary>
+        public static event Action<BaseNoteControl, object?, object?>? NoteContentEditCompleted;
+
         public event EventHandler? VisualBoundsChanged;
         internal void RaiseVisualBoundsChanged()
         {
@@ -601,12 +611,35 @@ namespace VirtualCorkboard.Controls
 
         protected virtual void EnterEditMode()
         {
-            // To be overridden by derived note types
+            // Capture content at start of edit session
+            if (!_isEditSessionActive)
+            {
+                _isEditSessionActive = true;
+                _contentAtEditStart = CaptureContent();
+            }
+
+            // Derived classes override to implement note-specific edit mode behaviors beyond undo/redo tracking
         }
 
         protected virtual void ExitEditMode()
         {
             IsInEditMode = false;
+            
+            // Check if content changed during edit session
+            if (_isEditSessionActive)
+            {
+                _isEditSessionActive = false;
+                
+                object? currentContent = CaptureContent();
+                if (!ContentEquals(_contentAtEditStart, currentContent))
+                {
+                    // Raise event to create edit command
+                    NoteContentEditCompleted?.Invoke(this, _contentAtEditStart, currentContent);
+                }
+                
+                _contentAtEditStart = null;
+            }
+            
             // Don't automatically deselect - let derived types handle this
         }
 
@@ -619,6 +652,39 @@ namespace VirtualCorkboard.Controls
                    DoubleUtil.AreClose(a.Top, b.Top) &&
                    DoubleUtil.AreClose(a.Width, b.Width) &&
                    DoubleUtil.AreClose(a.Height, b.Height);
+        }
+
+        /// <summary>
+        /// Captures the current content state for undo/redo.
+        /// Override in derived classes to capture specific content type.
+        /// </summary>
+        protected virtual object? CaptureContent()
+        {
+            // Base implementation returns null
+            // Derived classes must override to return appropriate content
+            return null;
+        }
+
+        /// <summary>
+        /// Compares two content objects for equality.
+        /// Override in derived classes for specific comparison logic.
+        /// </summary>
+        protected virtual bool ContentEquals(object? content1, object? content2)
+        {
+            // Default implementation uses reference equality
+            // Derived classes override for value comparison
+            return ReferenceEquals(content1, content2) || 
+                   (content1 != null && content1.Equals(content2));
+        }
+
+        /// <summary>
+        /// Applies content to the note (for undo/redo).
+        /// Override in derived classes to apply specific content type.
+        /// </summary>
+        public virtual void ApplyContent(object? content)
+        {
+            // Base implementation does nothing
+            // Derived classes override to apply content
         }
 
         // Consolidated rectangle/constraint helpers

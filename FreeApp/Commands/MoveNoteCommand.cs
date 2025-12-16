@@ -75,6 +75,7 @@ namespace VirtualCorkboard.Free.Commands
         {
             var notesToUpdate = new List<BaseNoteControl>();
             
+            // Step 1: Apply positions
             foreach (var (noteId, position) in positions)
             {
                 var note = FindNote(noteId);
@@ -86,40 +87,40 @@ namespace VirtualCorkboard.Free.Commands
                 }
             }
 
-            // Force synchronous layout update first
-            if (notesToUpdate.Count > 0)
+            if (notesToUpdate.Count == 0) return;
+
+            // Step 2: Force COMPLETE layout update - synchronously
+            // This ensures all ActualWidth/Height and transforms are finalized
+            foreach (var note in notesToUpdate)
             {
-                // Update layout synchronously to ensure ActualWidth/Height are correct
-                foreach (var note in notesToUpdate)
+                note.UpdateLayout();
+            }
+
+            // Step 3: Update pin positions - synchronously, no deferral
+            var manager = PinOverlayManager.Instance;
+            foreach (var note in notesToUpdate)
+            {
+                if (note.Pin != null && manager != null)
                 {
-                    note.UpdateLayout();
+                    // Clear cached position
+                    note.Pin.InvalidatePosition();
+                    
+                    // Force immediate pin position update
+                    manager.UpdatePinPosition(note, note.Pin);
+                    
+                    //Force pin layout update so TransformToVisual works correctly
+                    note.Pin.UpdateLayout();
                 }
-                
-                // Then update pins and twines after layout is stable
-                Application.Current.Dispatcher.BeginInvoke(
-                    new Action(() =>
-                    {
-                        foreach (var note in notesToUpdate)
-                        {
-                            if (note.Pin != null)
-                            {
-                                // Clear cached position
-                                note.Pin.InvalidatePosition();
-                                PinControl? pin = note.Pin;
-                                // Force pin to recalculate and update its overlay position
-                                var manager = PinOverlayManager.Instance;
-                                if (manager != null)
-                                {
-                                    manager.UpdatePinPosition(note, pin);
-                                }
-                            }
-                            
-                            // Update twine connections
-                            NoteCommandHelpers.InvalidateNoteVisuals(note);
-                        }
-                    }),
-                    System.Windows.Threading.DispatcherPriority.Render
-                );
+            }
+
+            // Step 4: Update twine connections - synchronously, no deferral
+            // Pins are now at correct positions with correct transforms
+            foreach (var note in notesToUpdate)
+            {
+                if (note.TwineManager != null && note.Pin != null)
+                {
+                    note.TwineManager.UpdateAllConnectionsForPin(note.Pin);
+                }
             }
         }
 
