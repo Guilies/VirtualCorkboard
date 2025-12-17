@@ -91,8 +91,10 @@ namespace VirtualCorkboard
             _inputController.SaveRequested += () => _workspaceController.PerformSave(false);
             _inputController.ToggleActiveInactiveRequested += ToggleActiveInactive;
             _inputController.DirtyStateChanged += () => _workspaceController.MarkDirty();
+            _inputController.TwineDeletionRequested += HandleTwineDeletionRequested;
 
             _twineInteraction.TwineConnectionCompleted += () => _workspaceController.MarkDirty();
+            _twineInteraction.TwineConnectionRequested += HandleTwineConnectionRequested;
             _noteInteraction.NoteModified += () => _workspaceController.MarkDirty();
 
             // Wire up viewport events for dirty tracking
@@ -356,6 +358,49 @@ namespace VirtualCorkboard
                 newContent);
 
             _commandManager.Execute(command);
+        }
+
+        private void HandleTwineConnectionRequested(PinControl sourcePin, PinControl targetPin)
+        {
+            // Create command with pins
+            var command = new Free.Commands.AddTwineConnectionCommand(
+                _twineManager,
+                sourcePin,
+                targetPin,
+                new TwineStyle()
+            );
+            
+            // Execute through command manager
+            _commandManager.Execute(command);
+        }
+
+        private void HandleTwineDeletionRequested()
+        {
+            var selectedConnections = _twineManager.GetSelectedConnections().ToList();
+            
+            if (selectedConnections.Count == 0)
+                return;
+            
+            // Create removal commands for each selected connection
+            var removalCommands = selectedConnections.Select(conn =>
+                (Commands.ICommand)new Free.Commands.RemoveTwineConnectionCommand(_twineManager, conn)
+            ).ToList();
+            
+            // Wrap in composite if multiple connections, otherwise use single command
+            Commands.ICommand finalCommand;
+            if (removalCommands.Count == 1)
+            {
+                finalCommand = removalCommands[0];
+            }
+            else
+            {
+                finalCommand = new Commands.CompositeCommand(
+                    removalCommands,
+                    $"Delete {removalCommands.Count} Connections"
+                );
+            }
+            
+            _commandManager.Execute(finalCommand);
         }
     }
 }

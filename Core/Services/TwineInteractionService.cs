@@ -22,6 +22,12 @@ namespace VirtualCorkboard.Services
         private PinControl? _twineDragSourcePin;
 
         public event Action? TwineConnectionCompleted;
+        
+        /// <summary>
+        /// Raised when user completes drag and pins are ready for connection.
+        /// Parameters: (sourcePin, targetPin)
+        /// </summary>
+        public event Action<PinControl, PinControl>? TwineConnectionRequested;
 
         public TwineInteractionService(
             Canvas twineCanvas,
@@ -68,7 +74,14 @@ namespace VirtualCorkboard.Services
 
             if (targetPin != null && targetPin != _twineDragSourcePin)
             {
-                _twineManager.CompleteConnection(targetPin);
+                // Get pins from manager (which cleans up ghost line)
+                var pins = _twineManager.CompleteConnection(targetPin);
+                
+                if (pins.HasValue)
+                {
+                    // Raise event with pins for command creation
+                    TwineConnectionRequested?.Invoke(pins.Value.source, pins.Value.target);
+                }
             }
             else
             {

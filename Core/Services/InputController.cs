@@ -23,6 +23,7 @@ namespace VirtualCorkboard.Services
         public event Action? SaveRequested;
         public event Action? ToggleActiveInactiveRequested;
         public event Action? DirtyStateChanged;
+        public event Action? TwineDeletionRequested;
 
         public InputController(
             Canvas notesCanvas,
@@ -62,7 +63,7 @@ namespace VirtualCorkboard.Services
             // Delete key to delete selected twine connections or notes
             if (e.Key == Key.Delete)
             {
-                if (TryDeleteSelectedTwine())
+                if (TryDeleteSelectedTwineViaCommand())
                 {
                     e.Handled = true;
                     DirtyStateChanged?.Invoke();
@@ -87,7 +88,7 @@ namespace VirtualCorkboard.Services
         {
             if (e.Key == Key.Delete)
             {
-                if (!e.Handled && TryDeleteSelectedTwine())
+                if (!e.Handled && TryDeleteSelectedTwineViaCommand())
                 {
                     e.Handled = true;
                     DirtyStateChanged?.Invoke();
@@ -99,7 +100,7 @@ namespace VirtualCorkboard.Services
         {
             if (e.Key == Key.Delete)
             {
-                if (TryDeleteSelectedTwine())
+                if (TryDeleteSelectedTwineViaCommand())
                 {
                     e.Handled = true;
                     DirtyStateChanged?.Invoke();
@@ -134,6 +135,18 @@ namespace VirtualCorkboard.Services
             }
         }
 
+        private bool TryDeleteSelectedTwineViaCommand()
+        {
+            if (_twineManager != null && _twineManager.HasSelectedConnections)
+            {
+                // Raise event for command-based deletion
+                TwineDeletionRequested?.Invoke();
+                return true;
+            }
+            return false;
+        }
+
+        // Legacy method - kept for compatibility but should not be used
         private bool TryDeleteSelectedTwine()
         {
             if (_twineManager != null && _twineManager.HasSelectedConnections)

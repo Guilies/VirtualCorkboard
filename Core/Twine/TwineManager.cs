@@ -42,6 +42,11 @@ namespace VirtualCorkboard.Twine
          // New: enumerate all active connections for persistence
          public IEnumerable<TwineConnection> EnumerateConnections() => _twineLines.Keys.ToList();
 
+         /// <summary>
+         /// Gets a list of currently selected connections for deletion/commands.
+         /// </summary>
+         public IEnumerable<TwineConnection> GetSelectedConnections() => _selectedConnections.ToList();
+
          public void StartTwineConnection(PinControl sourcePin, Point _)
          {
              _dragSourcePin = sourcePin;
@@ -60,30 +65,26 @@ namespace VirtualCorkboard.Twine
              }
          }
 
-         public void CompleteConnection(PinControl targetPin)
+         /// <summary>
+         /// Completes the twine drag interaction by cleaning up ghost line.
+         /// Returns the source and target pins for command creation, or null if drag is invalid.
+         /// </summary>
+         public (PinControl source, PinControl target)? CompleteConnection(PinControl targetPin)
          {
              if (_dragSourcePin == null || _ghostLine == null)
              {
-                return;
+                return null;
              }
 
-             var connection = new TwineConnection(_dragSourcePin, targetPin, new TwineStyle());
-             _dragSourcePin.OutgoingConnections.Add(connection);
-             targetPin.IncomingConnections.Add(connection);
-
-             var start = GetPinPositionOnTwineCanvas(connection.SourcePin);
-             var end = GetPinPositionOnTwineCanvas(connection.TargetPin);
-             var line = CreateTwineLine(start, end, connection.Style);
-             line.MouseLeftButtonDown += OnLineMouseLeftButtonDown;
-             line.Cursor = Cursors.Hand;
-
-             _twineLines.Add(connection, line);
-             _lineToConnection[line] = connection;
-             _twineCanvas.Children.Add(line);
-
+             var sourcePin = _dragSourcePin;
+             
+             // Clean up ghost line
              _twineCanvas.Children.Remove(_ghostLine);
              _ghostLine = null;
              _dragSourcePin = null;
+             
+             // Return pins for command creation
+             return (sourcePin, targetPin);
          }
 
          public void CancelConnection()
